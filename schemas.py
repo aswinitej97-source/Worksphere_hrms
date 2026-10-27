@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from pydantic import (
@@ -361,4 +361,76 @@ class NotificationResponse(ORMResponse):
     title: str
     message: str
     is_read: bool
+    created_at: datetime
+    # Shifts
+
+class ShiftCreate(StrictInput):
+    name: str = Field(
+        min_length=1,
+        max_length=50,
+    )
+    start_time: time
+    end_time: time
+
+
+class ShiftResponse(ORMResponse):
+    id: int
+    name: str
+    start_time: time
+    end_time: time
+    # Employee Shifts
+
+class EmployeeShiftCreate(StrictInput):
+    employee_id: int = Field(gt=0)
+    shift_id: int = Field(gt=0)
+
+
+class EmployeeShiftResponse(ORMResponse):
+    id: int
+    employee_id: int
+    shift_id: int
+    # Documents
+
+class DocumentCreate(StrictInput):
+    employee_id: int = Field(gt=0)
+    file_name: str = Field(
+        min_length=1,
+        max_length=255,
+    )
+    file_url: str = Field(
+        min_length=1,
+        max_length=500,
+    )
+
+
+class DocumentResponse(ORMResponse):
+    id: int
+    employee_id: int
+    file_name: str
+    file_url: str
+    uploaded_at: datetime
+    # Performance
+
+class PerformanceCreate(StrictInput):
+    employee_id: int = Field(gt=0)
+    review_period: str = Field(
+        min_length=1,
+        max_length=100,
+    )
+    rating: int = Field(
+        ge=1,
+        le=5,
+    )
+    feedback: str = Field(
+        min_length=1,
+        max_length=2000,
+    )
+
+
+class PerformanceResponse(ORMResponse):
+    id: int
+    employee_id: int
+    review_period: str
+    rating: int
+    feedback: str
     created_at: datetime

@@ -16,9 +16,11 @@ from models import (
     Leave,
     LeaveStatus,
     Payroll,
+    Performance,
     Role,
     User,
 )
+
 
 router = APIRouter(
     prefix="/analytics",
@@ -33,11 +35,14 @@ def dashboard_summary(
         pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$",
     ),
     db: Session = Depends(get_db),
-    manager: User = Depends(require_roles(Role.HR, Role.ADMIN)),
+    manager: User = Depends(
+        require_roles(Role.HR, Role.ADMIN)
+    ),
 ):
     today = datetime.now(IST).date()
     selected_month = month or today.strftime("%Y-%m")
 
+    # Employee statistics
     total_employees = db.scalar(
         select(func.count(Employee.id))
     ) or 0
@@ -48,9 +53,16 @@ def dashboard_summary(
         )
     ) or 0
 
+    # Today's attendance
     attendance_rows = db.execute(
-        select(Attendance.status, func.count(Attendance.id))
-        .join(Employee, Employee.id == Attendance.employee_id)
+        select(
+            Attendance.status,
+            func.count(Attendance.id),
+        )
+        .join(
+            Employee,
+            Employee.id == Attendance.employee_id,
+        )
         .where(
             Attendance.date == today,
             Employee.status == EmployeeStatus.ACTIVE,
@@ -59,24 +71,33 @@ def dashboard_summary(
     ).all()
 
     attendance = {
-        status.value: 0 for status in AttendanceStatus
+        status.value: 0
+        for status in AttendanceStatus
     }
-    for status, count in attendance_rows:
-        attendance[status.value] = count
+
+    for attendance_status, count in attendance_rows:
+        attendance[attendance_status.value] = count
 
     recorded = sum(attendance.values())
 
+    # Leave statistics
     leave_rows = db.execute(
-        select(Leave.status, func.count(Leave.id))
+        select(
+            Leave.status,
+            func.count(Leave.id),
+        )
         .group_by(Leave.status)
     ).all()
 
     leave_statistics = {
-        status.value: 0 for status in LeaveStatus
+        status.value: 0
+        for status in LeaveStatus
     }
-    for status, count in leave_rows:
-        leave_statistics[status.value] = count
 
+    for leave_status, count in leave_rows:
+        leave_statistics[leave_status.value] = count
+
+    # Payroll overview
     payroll_totals = db.execute(
         select(
             func.count(Payroll.id),
@@ -84,7 +105,9 @@ def dashboard_summary(
             func.sum(Payroll.deductions),
             func.sum(Payroll.bonus),
             func.sum(Payroll.net_salary),
-        ).where(Payroll.month == selected_month)
+        ).where(
+            Payroll.month == selected_month
+        )
     ).one()
 
     def money(value):
@@ -94,13 +117,19 @@ def dashboard_summary(
             )
         )
 
+    # Department-wise employee report
     departments = db.execute(
-        select(Employee.department, func.count(Employee.id))
+        select(
+            Employee.department,
+            func.count(Employee.id),
+        )
         .group_by(Employee.department)
         .order_by(Employee.department)
     ).all()
 
+    # Last 7 days attendance trend
     start_date = today - timedelta(days=6)
+
     trend_rows = db.execute(
         select(
             Attendance.date,
@@ -111,12 +140,17 @@ def dashboard_summary(
             Attendance.date >= start_date,
             Attendance.date <= today,
         )
-        .group_by(Attendance.date, Attendance.status)
+        .group_by(
+            Attendance.date,
+            Attendance.status,
+        )
     ).all()
 
     trend = {}
+
     for index in range(7):
         day = start_date + timedelta(days=index)
+
         trend[day] = {
             "date": day.isoformat(),
             "PRESENT": 0,
@@ -124,30 +158,105 @@ def dashboard_summary(
             "ABSENT": 0,
         }
 
-    for day, status, count in trend_rows:
-        trend[day][status.value] = count
+    for day, attendance_status, count in trend_rows:
+        trend[day][attendance_status.value] = count
+
+    # Performance insights
+    performance_stats = db.execute(
+        select(
+            func.count(Performance.id),
+            func.avg(Performance.rating),
+        )
+    ).one()
+
+    # Department-wise performance
+    performance_by_department = db.execute(
+        select(
+            Employee.department,
+            func.avg(Performance.rating),
+            func.count(Performance.id),
+        )
+        .join(
+            Employee,
+            Employee.id == Performance.employee_id,
+        )
+        .group_by(Employee.department)
+        .order_by(Employee.department)
+    ).all()
 
     return {
         "total_employees": total_employees,
+
         "active_employees": active_employees,
-        "inactive_employees": total_employees - active_employees,
+
+        "inactive_employees": (
+            total_employees - active_employees
+        ),
+
         "attendance_today": {
             "date": today.isoformat(),
             **attendance,
-            "not_marked": max(active_employees - recorded, 0),
+            "not_marked": max(
+                active_employees - recorded,
+                0,
+            ),
         },
+
         "leave_statistics": leave_statistics,
+
         "payroll_overview": {
             "month": selected_month,
             "generated_count": payroll_totals[0],
-            "basic_salary": money(payroll_totals[1]),
-            "deductions": money(payroll_totals[2]),
-            "bonus": money(payroll_totals[3]),
-            "net_salary": money(payroll_totals[4]),
+            "basic_salary": money(
+                payroll_totals[1]
+            ),
+            "deductions": money(
+                payroll_totals[2]
+            ),
+            "bonus": money(
+                payroll_totals[3]
+            ),
+            "net_salary": money(
+                payroll_totals[4]
+            ),
         },
+
         "employees_by_department": [
-            {"department": department, "count": count}
+            {
+                "department": department,
+                "count": count,
+            }
             for department, count in departments
         ],
-        "attendance_trend": list(trend.values()),
+
+        "attendance_trend": list(
+            trend.values()
+        ),
+
+        "performance_insights": {
+            "total_reviews": performance_stats[0],
+
+            "average_rating": round(
+                float(
+                    performance_stats[1] or 0
+                ),
+                2,
+            ),
+
+            "by_department": [
+                {
+                    "department": department,
+                    "average_rating": round(
+                        float(avg_rating or 0),
+                        2,
+                    ),
+                    "review_count": review_count,
+                }
+                for (
+                    department,
+                    avg_rating,
+                    review_count,
+                ) in performance_by_department
+            ],
+        },
     }

@@ -1,5 +1,5 @@
 import enum
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -13,6 +13,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    Time,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -495,6 +496,126 @@ class Notification(Base):
     is_read: Mapped[bool] = mapped_column(
         Boolean,
         default=False,
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        nullable=False,
+    )
+    # Shifts
+
+class Shift(Base):
+    __tablename__ = "shifts"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    name: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+    )
+
+    start_time: Mapped[time] = mapped_column(
+        Time,
+        nullable=False,
+    )
+
+    end_time: Mapped[time] = mapped_column(
+        Time,
+        nullable=False,
+    )
+    # Employee Shifts
+
+class EmployeeShift(Base):
+    __tablename__ = "employee_shifts"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    employee_id: Mapped[int] = mapped_column(
+        ForeignKey("employees.id"),
+        index=True,
+        nullable=False,
+    )
+
+    shift_id: Mapped[int] = mapped_column(
+        ForeignKey("shifts.id"),
+        index=True,
+        nullable=False,
+    )
+    # Documents
+
+class Document(Base):
+    __tablename__ = "documents"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    employee_id: Mapped[int] = mapped_column(
+        ForeignKey("employees.id"),
+        index=True,
+        nullable=False,
+    )
+
+    file_name: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    file_url: Mapped[str] = mapped_column(
+        String(500),
+        nullable=False,
+    )
+
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        nullable=False,
+    )
+    # Performance
+
+class Performance(Base):
+    __tablename__ = "performance"
+
+    __table_args__ = (
+        CheckConstraint(
+            "rating >= 1 AND rating <= 5",
+            name="ck_performance_rating_range",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    employee_id: Mapped[int] = mapped_column(
+        ForeignKey("employees.id"),
+        index=True,
+        nullable=False,
+    )
+
+    review_period: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+
+    rating: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    feedback: Mapped[str] = mapped_column(
+        Text,
         nullable=False,
     )
 
