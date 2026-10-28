@@ -1,48 +1,43 @@
-import tkinter as tk
-from tkinter import simpledialog
 
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
-from auth import hash_password
-from database import SessionLocal
-from models import User
+from database import get_db
+from models import User, Role
+from auth import hash_password, require_roles
 
-root = tk.Tk()
-root.withdraw()
+router = APIRouter(
+    prefix="/reset-password",
+    tags=["Password Reset"]
+)
 
-try:
-    password = simpledialog.askstring(
-        "Reset password",
-        "Enter a new password (8–128 characters):",
-        show="*",
-        parent=root,
+
+class ResetPasswordRequest(BaseModel):
+    user_id: int
+    new_password: str = Field(min_length=8)
+
+
+@router.post("/")
+def reset_password(
+    data: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles(Role.ADMIN)),
+):
+    user = db.get(User, data.user_id)
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    user.hashed_password = hash_password(
+        data.new_password
     )
-    confirm = simpledialog.askstring(
-        "Confirm password",
-        "Enter the same password again:",
-        show="*",
-        parent=root,
-    )
 
-    if password is None or confirm is None:
-        print("Reset cancelled.")
-    elif not 8 <= len(password) <= 128:
-        print("Password must contain 8–128 characters.")
-    elif password != confirm:
-        print("Passwords do not match.")
-    else:
-        with SessionLocal() as db:
-            user = db.scalar(
-                select(User).where(
-                    User.username == "tejaswini21"
-                )
-            )
-            if user is None:
-                print("User not found.")
-            else:
-                user.hashed_password = hash_password(password)
-                db.commit()
-                print("Password reset successfully.")
-finally:
-    root.destroy()
-    
+    db.commit()
+
+    return {
+        "message": "Password reset successfully"
+    }
